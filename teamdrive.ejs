@@ -1,0 +1,389 @@
+<%- include('../partials/header.ejs') %>
+    <%- include('../partials/navbar.ejs') %>
+        <div class="body flex-grow-1 px-3">
+
+
+            <div class="container-lg">
+                <div class="row">
+                    <div class="tab-pane p-3 active preview" role="tabpanel" id="preview-1004">
+                        <div class="row">
+                            <div class="row mb-4">
+                                <form id="team-drive-form" style="width: 100%;" method="POST">
+                                    <div class="col-lg-12">
+                                     
+                                      <div class="input-group mb-3">
+                                        <input type="email" name="email" class="form-control" placeholder="Owner Email">
+                                      </div>
+                                      <button id="submit-team-drive" class="btn btn-success">Add Team Drive</button>
+                                    </div>
+                                  </form>
+                                </div>
+                                <div class="row">
+                                    <div class="col-lg-12">
+                                      <div class="card shadow mb-4">
+                                        <div class="card-header py-3">
+                                          <h6 class="m-0 font-weight-bold text-primary">Accounts</h6>
+                                        </div>
+                                        <div class="card-body">
+                                          <table id="oauths-table" class="table table-bordered">
+                                            <thead>
+                                              <tr>
+                                                <th style="width: 10px;">#</th>
+                                                <th style="width: 100px;">Email</th>
+                                                <th style="width: 100px;">Folder ID</th>
+                                       
+                                                     
+                                                <th style="width: 50px;">Status</th>
+                                           
+                                                <th style="width: 250px;">Control</th>
+                                              </tr>
+                                            </thead>
+                                            <tbody>
+                                              <!-- Table data will be populated here -->
+                                            </tbody>
+                                          </table>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <footer class="footer">
+            <div>TOOLS AUTO BACKUP </a> Â© 2023 Version 1.0.0</div>
+            <div class="ms-auto">Powered by&nbsp; NODEJS & EXPRESS & PostgreSQL & Redis</div>
+        </footer>
+        </div>
+        <script>
+
+         
+         
+              
+  $(document).ready(function() {
+  $('#submit-team-drive').click(function(e) {
+    e.preventDefault(); // Prevent default form submission
+
+
+    const email = $('input[name="email"]').val();
+
+    $.ajax({
+      url: '/teamdrive/api/add', // Server endpoint
+      method: 'POST',
+      data: {email: email },
+      dataType: 'json', // Expect a JSON response
+      success: function(response) {
+        if (response.status === 'success') {
+          Swal.fire({
+            title: 'Success!',
+            text: response.message,
+            icon: 'success',
+            confirmButtonText: 'OK'
+          });
+        } else {
+          Swal.fire({
+            title: 'Error!',
+            text: response.message,
+            icon: 'error',
+            confirmButtonText: 'OK'
+          });
+        }
+      },
+      error: function(error) {
+        Swal.fire({
+          title: 'Error!',
+          text: 'Something went wrong.',
+          icon: 'error',
+          confirmButtonText: 'OK'
+        });
+      }
+    });
+  });
+});
+         
+         
+         
+         </script>
+    <script>
+function format_file_size(filesize_in_bytes) {
+  const units = ['B', 'kB', 'MB', 'GB', 'TB'];
+  let index = 0;
+
+  while (filesize_in_bytes >= 1024 && index < units.length - 1) {
+    filesize_in_bytes /= 1024;
+    index++;
+  }
+
+  if (isNaN(filesize_in_bytes)) {
+    console.error('Invalid filesize_in_bytes:', filesize_in_bytes);
+    return 'N/A';
+  }
+
+  const formattedSize = filesize_in_bytes.toFixed(2) + ' ' + units[index];
+  console.log('Formatted size:', formattedSize); // Debugging statement
+  return formattedSize;
+}
+
+
+function handleInactiveButtonClick(email) {
+    $('#inactive-email').text(email); // Set the email in the modal
+    $('#inactiveModal').modal('show'); // Show the modal
+}
+
+
+        $(document).ready(function() {
+          // Function to populate the table with data
+          function populateTable(data) {
+  const dataTable = $('#oauths-table').DataTable();
+  dataTable.clear().draw();
+
+  data.forEach(function(item, index) {
+    const hasStatus = item.status !== null && item.status !== undefined;
+    
+    dataTable.row.add([
+      index + 1,
+      item.google_email,
+      item.folder_id,
+      item.status_limit,
+      hasStatus ? '<button class="btn btn-success btn-circle"><i class="fas fa-check"></i></button>' :
+                    `<button id="inactive-oauth-${item.google_email}" class="btn btn-danger" onclick="handleInactiveButtonClick('${item.google_email}')">Inactive</button>`,
+      `<button id="remove-oauth-${index}" onclick="removeOauth('${index}', '${item.google_email}')" class="btn btn-danger btn-circle"><i class="fas fa-trash"></i></button>`,
+    ]).draw(false);
+  });
+}
+    
+          // Function to fetch and populate data from the API
+          function fetchAndPopulateData() {
+            $.ajax({
+              url: '/teamdrive/api/list', // Replace with your API endpoint
+              method: 'GET',
+              dataType: 'json',
+              success: function(response) {
+                if (response.status === 'success') {
+                  const data = response.googleTokens;
+                  populateTable(data);
+                } else {
+                  // Handle error
+                  console.error(response.message);
+                }
+              },
+              error: function(error) {
+                // Handle error
+                console.error('An error occurred while fetching data.');
+              }
+            });
+          }
+    
+          // Call the fetchAndPopulateData function to load data when the page loads
+          fetchAndPopulateData();
+    
+          // Initialize DataTable for your table
+          const dataTable = $('#oauths-table').DataTable({
+            searching: true, // Enable searching
+            ordering: true,  // Enable sorting
+            paging: true,    // Enable pagination
+          });
+    
+          // Submit email form and update table
+          $('#submit-email').click(function(e) {
+            e.preventDefault();
+            const email = $('input[name="email"]').val();
+    
+            $.ajax({
+              url: '/teamdrive/api/add', // Server endpoint
+              method: 'POST',
+              data: { email: email },
+              dataType: 'json',
+              success: function(response) {
+                if (response.status === 'success') {
+                  Swal.fire({
+                    title: 'Success!',
+                    text: response.message,
+                    icon: 'success',
+                    confirmButtonText: 'OK'
+                  });
+                  // Reload the table after adding an email
+                  fetchAndPopulateData();
+                } else {
+                  Swal.fire({
+                    title: 'Error!',
+                    text: response.message,
+                    icon: 'error',
+                    confirmButtonText: 'OK'
+                  });
+                }
+              },
+              error: function(error) {
+                Swal.fire({
+                  title: 'Error!',
+                  text: 'Something went wrong.',
+                  icon: 'error',
+                  confirmButtonText: 'OK'
+                });
+              }
+            });
+          });
+        });
+
+
+
+
+// Function to remove an email
+function removeOauth(index, email) {
+  // Display a confirmation dialog before removing the email
+  Swal.fire({
+    title: 'Are you sure?',
+    text: `Do you want to remove the email: ${email}?`,
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonText: 'Yes, remove it!',
+    cancelButtonText: 'No, cancel!',
+  }).then((result) => {
+    if (result.isConfirmed) {
+      // User confirmed, send a request to remove the email
+      $.ajax({
+        url: '/teamdrive/api/removeOauth', // Replace with your API endpoint for removing emails
+        method: 'POST',
+        data: { email: email },
+        dataType: 'json',
+        success: function(response) {
+          if (response.status === 'success') {
+            Swal.fire('Deleted!', response.message, 'success');
+            // Remove the row from the DataTable after successful removal
+            const dataTable = $('#oauths-table').DataTable();
+            dataTable.row(`#remove-oauth-${index}`).remove().draw(false);
+          } else {
+            Swal.fire('Error!', response.message, 'error');
+          }
+        },
+        error: function(error) {
+          Swal.fire('Error!', 'Something went wrong.', 'error');
+        }
+      });
+    }
+  });
+}
+</script>
+<div class="modal fade" id="inactiveModal" tabindex="-1" role="dialog" aria-labelledby="exampleModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Active Oauth</h5>
+          <button type="button" class="btn-close" data-coreui-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+            <li>
+                Follow the link:
+                <a onclick="oauthCallback('<%= client_id %>', 'http://localhost', 'https://accounts.google.com/o/oauth2/auth')" href="#" class="text-danger">Click Here</a>
+                </li>
+                <ol>
+                <li>Login with the email:<span class="text-success" id="inactive-email"></span></li>
+                <li>Copy the token and paste on the field bellow.</li>
+                </ol>
+                    <div class="input-group mb-3">
+                        <div class="input-group-prepend">
+                        <span class="input-group-text">Token</span>
+                        </div>
+                        <input id="token-oauth-input-1" type="text" class="form-control">
+                        </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-coreui-dismiss="modal">Close</button>
+          <button onclick="activeOauthCallback('1', 'updrive@stream037hd.com', '<%= client_id %>', '<%= client_secret %>', 'http://localhost:3000', 'teamdrive')" type="button" class="btn btn-success">Active</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+
+  <script>
+    function oauthCallback(clientId, redirectUri, authUrl) {
+        console.log(clientId, redirectUri, authUrl);
+
+        // Construct OAuth parameters
+        var oauthParams = {
+            access_type: "offline",
+            scope: "https://www.googleapis.com/auth/drive",
+            response_type: "code",
+            client_id: clientId,
+            redirect_uri: redirectUri,
+        };
+
+        // Encode OAuth parameters as a query string
+        var queryString = Object.keys(oauthParams)
+            .map(key => encodeURIComponent(key) + "=" + encodeURIComponent(oauthParams[key]))
+            .join("&");
+
+        // Open Google OAuth URL in a new window
+        window.open("/teamdrive/auth", "_blank");
+    }
+
+
+
+
+function activeOauthCallback(identifier, email, clientId, clientSecret, redirectUri, apiUrl) {
+  // Perform OAuth authentication
+  var code = prompt("Please enter the OAuth code:");
+  if (code) {
+    var formData = new FormData();
+    formData.append("code", code);
+    formData.append("client_id", clientId);
+    formData.append("client_secret", clientSecret);
+    formData.append("grant_type", "authorization_code");
+    formData.append("redirect_uri", redirectUri);
+
+    $.ajax({
+      url: "https://accounts.google.com/o/oauth2/token",
+      method: "POST",
+      data: formData,
+      contentType: !1,
+      processData: !1,
+    })
+      .done(function (authResponse) {
+        // OAuth authentication successful
+        var dataToSend = {
+          email: email,
+          oauths: JSON.stringify(authResponse)
+        };
+
+        // Send the OAuth response to your server using a PUT request
+        $.ajax({
+          url: apiUrl,
+          method: "PUT",
+          data: JSON.stringify(dataToSend),
+          contentType: "application/json",
+          processData: !1,
+        })
+          .done(function (response) {
+            // Handle successful response from your server
+            location.reload(true);
+          })
+          .fail(function (error) {
+            // Handle PUT request failure
+            console.error("PUT Request Failed:", error);
+          });
+      })
+      .fail(function (error) {
+        // Handle OAuth authentication failure
+        console.error("OAuth Authentication Failed:", error);
+      });
+  } else {
+    console.log("OAuth code is required.");
+  }
+}
+
+
+
+
+</script>
+
+
+
+
+</body>
+</html>
+
+
+
+<%- include('../partials/footer.ejs') %>
