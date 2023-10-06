@@ -365,9 +365,6 @@ async function downloadAndProcessFile() {
    }
 
 
-   // Reset any stuck or working links
-   //await client.query("UPDATE hlsmp4 SET status = '0' WHERE status = '1';");
-   //console.log('Reset stuck or working links.');
 
    // Fetch the first pending file
    const result = await client.query("SELECT * FROM hlsmp4 WHERE status = '0' ORDER BY time DESC LIMIT 1;");
@@ -378,10 +375,6 @@ async function downloadAndProcessFile() {
      const downloadPath = `${DOWNLOAD_PATH}${id}.mp4`;
 
      try {
-       // Mark the file as being worked on
-       //await client.query("UPDATE hlsmp4 SET status = '0' WHERE id = $1;", [id]);
-       //console.log(`Set status to working for link: ${id}`);
-
        if (type === 'MP4') {
          await downloadFileMP4(link, downloadPath, id);
          console.log('MP4 Download successful.');
@@ -463,11 +456,57 @@ async function downloadAndProcessFile() {
   }
 }
 
-// Function to repeatedly download and process files every 10 seconds
+// Error Handling
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  
+  pool.connect().then(client => {
+    client.query('UPDATE hlsmp4 SET status = $1 WHERE id = $2', ['3', id])
+      .then(() => {
+        console.log(`Marked link as error: ${id}`);
+      })
+      .catch(err => {
+        console.error('Error updating database after unhandled rejection:', err);
+      })
+      .finally(() => {
+        client.release();
+      });
+  }).catch(err => {
+    console.error('Error connecting to database after unhandled rejection:', err);
+  });
+});
+
+process.on('uncaughtException', (err, origin) => {
+  console.error('Uncaught Exception thrown:', err, 'Exception origin:', origin);
+  
+  pool.connect().then(client => {
+    client.query('UPDATE hlsmp4 SET status = $1 WHERE id = $2', ['3', id])
+      .then(() => {
+        console.log(`Marked link as error: ${id}`);
+      })
+      .catch(err => {
+        console.error('Error updating database after uncaught exception:', err);
+      })
+      .finally(() => {
+        client.release();
+      });
+  }).catch(err => {
+    console.error('Error connecting to database after uncaught exception:', err);
+  });
+});
+
+
+// Main Process
 async function processPendingFiles() {
   while (true) {
-    await downloadAndProcessFile(); // Process one file at a time
-    await new Promise(resolve => setTimeout(resolve, 10000)); // Wait for 10 seconds
+    try {
+      await downloadAndProcessFile();
+    } catch (error) {
+      console.error('Error in processPendingFiles:', error);
+      // Update DB status if needed
+    } finally {
+      await new Promise(resolve => setTimeout(resolve, 10000)); // Wait for 10 seconds
+    }
   }
 }
 
