@@ -55,9 +55,22 @@ async function uploadFileToDrive(fileId, filePath, downloadPath) {
       'parents': [folder_id],
       'mimeType': mimeType,
     };
+
+    const fileSize = fs.statSync(filePath).size;
+    let uploadedBytes = 0;
+
+    const fileStream = fs.createReadStream(filePath);
+
+    // Listen to the 'data' event to track upload progress
+    fileStream.on('data', (chunk) => {
+      uploadedBytes += chunk.length;
+      const percentageUploaded = (uploadedBytes / fileSize) * 100;
+      console.log(`Uploaded: ${percentageUploaded.toFixed(2)}%`);
+    });
+
     const media = {
       mimeType: mimeType,
-      body: fs.createReadStream(filePath),
+      body: fileStream,
     };
 
     const driveResponse = await drive.files.create({
@@ -67,11 +80,10 @@ async function uploadFileToDrive(fileId, filePath, downloadPath) {
     });
 
     const driveId = driveResponse.data.id;
-    const fileSize = driveResponse.data.size;
     fs.unlinkSync(downloadPath);
 
     await client.query('UPDATE hlsmp4 SET drive_id = $1, filesize = $2, status = $3 WHERE id = $4', [driveId, fileSize, '1', fileId]);
-    console.log(`update link MP4 status: ${fileId}`); // Corrected 'id' to 'fileId'
+    console.log(`update link MP4 status: ${fileId}`);
 
     await drive.permissions.create({
       fileId: driveId,
@@ -151,9 +163,6 @@ async function downloadFileMP4(url, downloadPath, id) {
 }
 
 
-
-
-  
   
 const getPlaylist = async (playlistUrl) => {
   try {
@@ -172,56 +181,40 @@ const createFilesTxt = (DOWNLOAD_PATH,id) => {
   fs.writeFileSync(path.join(DOWNLOAD_PATH, `files_${id}.txt`), listContent);
 };
 
-const convertToMp4 = (DOWNLOAD_PATH, outputFileNamenew,id) => {
+const convertToMp4 = (DOWNLOAD_PATH, outputFileNamenew, id, totalDuration) => {
   return new Promise((resolve, reject) => {
     const listFilePath = path.join(DOWNLOAD_PATH, `files_${id}.txt`);
     const outputFilePath = path.join(DOWNLOAD_PATH, outputFileNamenew);
     const ffmpegCommand = `ffmpeg -f concat -safe 0 -i ${listFilePath} -c copy -y ${outputFilePath}`;
 
-    const ffmpegProcess = exec(ffmpegCommand, (error, stdout, stderr) => {
-      if (error) {
-        console.error('Error during conversion:', error);
-        console.error('FFmpeg stderr:', stderr);
-        reject(error);
+    const ffmpegProcess = exec(ffmpegCommand);
+
+    ffmpegProcess.stderr.on('data', (data) => {
+      const timeMatch = data.toString().match(/time=(\d{2}):(\d{2}):(\d{2}.\d{2})/);
+      if (timeMatch) {
+        const hours = parseInt(timeMatch[1], 10);
+        const minutes = parseInt(timeMatch[2], 10);
+        const seconds = parseFloat(timeMatch[3]);
+        const currentTime = hours * 3600 + minutes * 60 + seconds;
+        const percentage = (currentTime / totalDuration) * 100;
+        console.log(`Processing: ${percentage.toFixed(2)}%`);
+      }
+    });
+
+    ffmpegProcess.on('close', (code) => {
+      if (code !== 0) {
+        reject(new Error('FFmpeg process closed with a non-zero code.'));
         return;
       }
       console.log('Conversion to MP4 completed.');
       resolve();
     });
-  });
-};
 
-const downloadFile = async (fileUrl, filePath) => {
-  try {
-    const response = await axios.get(fileUrl, { responseType: 'stream' });
-    const writer = fs.createWriteStream(filePath);
-    response.data.pipe(writer);
-    return new Promise((resolve, reject) => {
-      writer.on('finish', resolve);
-      writer.on('error', reject);
+    ffmpegProcess.on('error', (error) => {
+      console.error('Error during conversion:', error);
+      reject(error);
     });
-  } catch (error) {
-    console.error(`Error downloading or saving file:`, error);
-    throw error;
-  }
-};
-
-const checkFileUrlStatus = async (fileUrl, maxRetries = 3, retryDelay = 1000) => {
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    try {
-      const response = await axios.head(fileUrl);
-      return response.status;
-    } catch (error) {
-      console.error(`Error checking file URL status:`, error);
-      if (error.response && [403, 502, 401, 400].includes(error.response.status)) {
-        console.log(`Retrying in ${retryDelay}ms... (Attempt ${attempt + 1}/${maxRetries})`);
-        await new Promise(resolve => setTimeout(resolve, retryDelay));
-      } else {
-        throw error;
-      }
-    }
-  }
-  throw new Error('Max retries reached. Unable to fetch file URL status.');
+  });
 };
 
 
@@ -301,14 +294,20 @@ const convertM3U8ToMP4 = async (m3u8Link, DOWNLOAD_PATH, id) => {
       
       // Usage
       await downloadSegments(segmentUrls, DOWNLOAD_PATH, id, 10);
-
+      console.log(`DownloadSegments ${id} finished`);
       // Create files.txt
       createFilesTxt(DOWNLOAD_PATH,id);
- 
+      console.log(`CreateFilesTxt ${id} finished`);
 
+      const totalDuration = 3600; // Total duration in seconds     
  // Convert to MP4
- await convertToMp4(DOWNLOAD_PATH, outputFileNamenew,id);
-
+ await  convertToMp4(DOWNLOAD_PATH, outputFileNamenew, id, totalDuration)
+ .then(() => {
+   console.log('Conversion successful!');
+ })
+ .catch((error) => {
+   console.error('Conversion failed:', error);
+ });
  // Delete .ts and .txt files
  fs.unlinkSync(listFilePath); // Delete files.txt
  console.log(`Deleted files_${id}.txt`);
